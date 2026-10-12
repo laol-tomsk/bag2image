@@ -1,6 +1,10 @@
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <std_msgs/UInt32.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <rclcpp/time.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <std_msgs/msg/u_int32.hpp>
 #include <boost/program_options.hpp>
 
 
@@ -17,7 +21,7 @@ int main(int argc, char **argv) {
     {
         po::options_description pos_desc_backend("Arguments");
         pos_desc_backend.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -53,25 +57,41 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::bagmode::Read);
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
     std::vector<std::string> topics;
     const std::string topic_name = vm[OPT_TOPIC].as<std::string>();
     topics.emplace_back(topic_name);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<std_msgs::UInt32>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = topics;
+    bag.set_filter(view);
+    std::string topic_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == topic_name)
+            topic_type = topic.type;
+    }
+    assert(topic_type == rosidl_generator_traits::name<std_msgs::msg::UInt32>());
 
     std::cout << "nsec";
     std::cout << "\tdata";
     std::cout << std::endl;
 
-    for (rosbag::MessageInstance const instance: view) {
-        const auto msg = instance.instantiate<std_msgs::UInt32>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        const builtin_interfaces::msg::Time receive_time = rclcpp::Time(instance->recv_timestamp);
+        std::shared_ptr<std_msgs::msg::UInt32> msg;
+        if (topic_type == rosidl_generator_traits::name<std_msgs::msg::UInt32>()) {
+            msg = std::make_shared<std_msgs::msg::UInt32>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<std_msgs::msg::UInt32> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
-        const auto& stamp = instance.getTime();
+        const auto& stamp = receive_time;
         std::ostringstream ss_sec, ss_nsec;
         ss_sec << std::setw(9) << std::setfill('0') << stamp.sec;
-        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nsec;
+        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nanosec;
         std::cout << ss_sec.str() << ss_nsec.str();
         std::cout << '\t' << msg->data;
         std::cout << std::endl;

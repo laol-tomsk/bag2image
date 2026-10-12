@@ -1,6 +1,7 @@
 #!/bin/bash
 
 docker_image="bag2image-parser"
+script_dir=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 
 docker_status=`dpkg -l | grep docker.io | awk '{print $1}'`
 if [ -z $docker_status ]
@@ -24,9 +25,7 @@ fi
 found_image=`docker image ls | grep $docker_image`
 if [ -z $docker ]
 then
-    wget https://github.com/standmit/bag2image/raw/master/parser.dockerfile
-    docker build -t $docker_image -f parser.dockerfile .
-    rm parser.dockerfile
+    docker build -t $docker_image -f "$script_dir/parser.dockerfile" "$script_dir"
 fi
 
 docker run --mount type=bind,source=$PWD,target=/tmp/share $docker_image

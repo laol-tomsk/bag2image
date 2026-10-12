@@ -1,9 +1,8 @@
 <launch>
     <arg name="file" />
     <arg name="topic" />
+    <arg name="directory" />
 
-    <node name="extractor" pkg="bag2image" type="extract_images" output="screen" required="true">
-        <param name="file" value="$(arg file)" />
-        <param name="topic" value="$(arg topic)" />
-    </node>
+    <executable cmd="$(find-pkg-prefix bag2image)/lib/bag2image/extract_images $(var file) $(var topic) $(var directory)"
+                output="screen" />
 </launch>

@@ -1,8 +1,12 @@
 #include <boost/program_options.hpp>
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <sensor_msgs/PointCloud2.h>
-#include <sensor_msgs/point_cloud2_iterator.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <rclcpp/time.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <sensor_msgs/msg/point_cloud2.hpp>
+#include <sensor_msgs/point_cloud2_iterator.hpp>
 
 
 namespace po = boost::program_options;
@@ -19,7 +23,7 @@ int main(int argc, char** argv) {
 
         po::options_description arguments("Arguments");
         arguments.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -58,15 +62,17 @@ int main(int argc, char** argv) {
         return vm;
     } (argc, argv);
 
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::BagMode::Read);
-    rosbag::View view(
-        bag,
-        rosbag::TopicQuery(
-            vm[OPT_TOPIC].as<std::string>()
-        )
-    );
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<sensor_msgs::PointCloud2>());
-    assert(view.begin()->getMD5Sum() == ros::message_traits::md5sum<sensor_msgs::PointCloud2>());
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = {vm[OPT_TOPIC].as<std::string>()};
+    bag.set_filter(view);
+    std::string topic_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == vm[OPT_TOPIC].as<std::string>())
+            topic_type = topic.type;
+    }
+    assert(topic_type == rosidl_generator_traits::name<sensor_msgs::msg::PointCloud2>());
 
     std::cout << "recieve\ttimestamp";
     std::cout << "\tx\ty";
@@ -74,8 +80,16 @@ int main(int argc, char** argv) {
     std::cout << "\tdist";
     std::cout << std::endl;
 
-    for (rosbag::MessageInstance const instance : view) {
-        const auto msg = instance.instantiate<sensor_msgs::PointCloud2>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        const builtin_interfaces::msg::Time receive_time = rclcpp::Time(instance->recv_timestamp);
+        std::shared_ptr<sensor_msgs::msg::PointCloud2> msg;
+        if (topic_type == rosidl_generator_traits::name<sensor_msgs::msg::PointCloud2>()) {
+            msg = std::make_shared<sensor_msgs::msg::PointCloud2>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<sensor_msgs::msg::PointCloud2> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
         
@@ -88,10 +102,10 @@ int main(int argc, char** argv) {
         sensor_msgs::PointCloud2ConstIterator<double> dist_iter(*msg, "dist");
 
         std::ostringstream recv_sec, recv_nsec, stamp_sec, stamp_nsec;
-        recv_sec << std::setw(9) << std::setfill('0') << instance.getTime().sec;
-        recv_nsec << std::setw(9) << std::setfill('0') << instance.getTime().nsec;
+        recv_sec << std::setw(9) << std::setfill('0') << receive_time.sec;
+        recv_nsec << std::setw(9) << std::setfill('0') << receive_time.nanosec;
         stamp_sec << std::setw(9) << std::setfill('0') << msg->header.stamp.sec;
-        stamp_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nsec;
+        stamp_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nanosec;
 
         while (x_iter != x_iter.end()) {
             std::cout << recv_sec.str() << recv_nsec.str();

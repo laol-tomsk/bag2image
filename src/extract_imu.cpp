@@ -1,6 +1,9 @@
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <sensor_msgs/Imu.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <sensor_msgs/msg/imu.hpp>
 #include <boost/program_options.hpp>
 
 
@@ -17,7 +20,7 @@ int main(int argc, char **argv) {
     {
         po::options_description pos_desc_backend("Arguments");
         pos_desc_backend.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -53,12 +56,20 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::bagmode::Read);
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
     std::vector<std::string> topics;
     const std::string topic_name = vm[OPT_TOPIC].as<std::string>();
     topics.emplace_back(topic_name);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<sensor_msgs::Imu>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = topics;
+    bag.set_filter(view);
+    std::string topic_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == topic_name)
+            topic_type = topic.type;
+    }
+    assert(topic_type == rosidl_generator_traits::name<sensor_msgs::msg::Imu>());
 
     std::cout << "nsec";
     std::cout << "\tquat_x\tquat_y\tquat_z\tquat_w";
@@ -66,14 +77,21 @@ int main(int argc, char **argv) {
     std::cout << "\tangular_x\tangular_y\tangular_z";
     std::cout << std::endl;
 
-    for (rosbag::MessageInstance const instance: view) {
-        const auto msg = instance.instantiate<sensor_msgs::Imu>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        std::shared_ptr<sensor_msgs::msg::Imu> msg;
+        if (topic_type == rosidl_generator_traits::name<sensor_msgs::msg::Imu>()) {
+            msg = std::make_shared<sensor_msgs::msg::Imu>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<sensor_msgs::msg::Imu> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
         
         std::ostringstream ss_sec, ss_nsec;
         ss_sec << std::setw(9) << std::setfill('0') << msg->header.stamp.sec;
-        ss_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nsec;
+        ss_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nanosec;
         std::cout << ss_sec.str() << ss_nsec.str();
         std::cout << '\t' << msg->orientation.x;
         std::cout << '\t' << msg->orientation.y;

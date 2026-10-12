@@ -1,6 +1,10 @@
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <std_msgs/Float64.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <rclcpp/time.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <std_msgs/msg/float64.hpp>
 #include <boost/program_options.hpp>
 
 
@@ -12,7 +16,7 @@ constexpr char OPT_BAG[]       = "bag";
 constexpr char OPT_HELP[]      = "help";
 
 
-typedef std_msgs::Float64 topic_type;
+typedef std_msgs::msg::Float64 topic_type;
 
 
 int main(int argc, char **argv) {
@@ -20,7 +24,7 @@ int main(int argc, char **argv) {
     {
         po::options_description pos_desc_backend("Arguments");
         pos_desc_backend.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -56,26 +60,42 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::bagmode::Read);
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
     std::vector<std::string> topics;
     const std::string topic_name = vm[OPT_TOPIC].as<std::string>();
     topics.emplace_back(topic_name);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<topic_type>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = topics;
+    bag.set_filter(view);
+    std::string recorded_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == topic_name)
+            recorded_type = topic.type;
+    }
+    assert(recorded_type == rosidl_generator_traits::name<topic_type>());
 
     std::cout << "nsec";
     std::cout << "\tdata";
     std::cout << std::endl;
 
-    for (rosbag::MessageInstance const instance: view) {
-        const auto msg = instance.instantiate<topic_type>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        const builtin_interfaces::msg::Time receive_time = rclcpp::Time(instance->recv_timestamp);
+        std::shared_ptr<topic_type> msg;
+        if (recorded_type == rosidl_generator_traits::name<topic_type>()) {
+            msg = std::make_shared<topic_type>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<topic_type> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
         
         std::ostringstream ss_sec, ss_nsec;
-        const auto& stamp = instance.getTime();
+        const auto& stamp = receive_time;
         ss_sec << std::setw(9) << std::setfill('0') << stamp.sec;
-        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nsec;
+        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nanosec;
         std::cout << ss_sec.str() << ss_nsec.str();
         std::cout << '\t' << msg->data;
         std::cout << std::endl;

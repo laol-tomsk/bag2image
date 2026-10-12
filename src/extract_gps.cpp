@@ -1,6 +1,10 @@
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <sensor_msgs/NavSatFix.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <rclcpp/time.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <sensor_msgs/msg/nav_sat_fix.hpp>
 #include <boost/program_options.hpp>
 
 
@@ -18,7 +22,7 @@ int main(int argc, char **argv) {
     {
         po::options_description pos_desc_backend("Arguments");
         pos_desc_backend.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -55,12 +59,20 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::bagmode::Read);
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
     std::vector<std::string> topics;
     const std::string topic_name = vm[OPT_TOPIC].as<std::string>();
     topics.emplace_back(topic_name);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<sensor_msgs::NavSatFix>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = topics;
+    bag.set_filter(view);
+    std::string topic_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == topic_name)
+            topic_type = topic.type;
+    }
+    assert(topic_type == rosidl_generator_traits::name<sensor_msgs::msg::NavSatFix>());
     const bool nostamp = vm[OPT_NOSTAMP].as<bool>();
 
     std::cout << "nsec\tlat\tlon\talt";
@@ -68,15 +80,23 @@ int main(int argc, char **argv) {
     std::cout << std::endl;
     std::cout.precision(9);
     
-    for (rosbag::MessageInstance const instance: view) {
-        const auto msg = instance.instantiate<sensor_msgs::NavSatFix>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        const builtin_interfaces::msg::Time receive_time = rclcpp::Time(instance->recv_timestamp);
+        std::shared_ptr<sensor_msgs::msg::NavSatFix> msg;
+        if (topic_type == rosidl_generator_traits::name<sensor_msgs::msg::NavSatFix>()) {
+            msg = std::make_shared<sensor_msgs::msg::NavSatFix>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<sensor_msgs::msg::NavSatFix> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
         
-        const auto& stamp = nostamp ? instance.getTime() : msg->header.stamp;
+        const auto& stamp = nostamp ? receive_time : msg->header.stamp;
         std::ostringstream ss_sec, ss_nsec;
         ss_sec << std::setw(9) << std::setfill('0') << stamp.sec;
-        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nsec;
+        ss_nsec << std::setw(9) << std::setfill('0') << stamp.nanosec;
         std::cout << ss_sec.str() << ss_nsec.str();
         std::cout << '\t' << msg->latitude;
         std::cout << '\t' << msg->longitude;

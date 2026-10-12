@@ -1,6 +1,9 @@
-#include <rosbag/bag.h>
-#include <rosbag/view.h>
-#include <geometry_msgs/TwistStamped.h>
+#include <rosbag2_cpp/reader.hpp>
+#include <cassert>
+#include <iomanip>
+#include <iostream>
+#include <sstream>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 #include <boost/program_options.hpp>
 
 
@@ -17,7 +20,7 @@ int main(int argc, char **argv) {
     {
         po::options_description pos_desc_backend("Arguments");
         pos_desc_backend.add_options()
-            (OPT_BAG, po::value<std::string>(), "BAG-file")
+            (OPT_BAG, po::value<std::string>(), "rosbag2 directory or storage file")
             (OPT_TOPIC, po::value<std::string>(), "topic name")
         ;
 
@@ -53,26 +56,41 @@ int main(int argc, char **argv) {
             return 0;
         }
     }
-    rosbag::Bag bag(vm[OPT_BAG].as<std::string>(), rosbag::bagmode::Read);
+    rosbag2_cpp::Reader bag;
+    bag.open(vm[OPT_BAG].as<std::string>());
     std::vector<std::string> topics;
     const std::string topic_name = vm[OPT_TOPIC].as<std::string>();
     topics.emplace_back(topic_name);
-    rosbag::View view(bag, rosbag::TopicQuery(topics));
-    assert(view.begin()->getDataType() == ros::message_traits::datatype<geometry_msgs::TwistStamped>());
+    rosbag2_storage::StorageFilter view;
+    view.topics = topics;
+    bag.set_filter(view);
+    std::string topic_type;
+    for (const auto& topic : bag.get_all_topics_and_types()) {
+        if (topic.name == topic_name)
+            topic_type = topic.type;
+    }
+    assert(topic_type == rosidl_generator_traits::name<geometry_msgs::msg::TwistStamped>());
 
     std::cout << "nsec";
     std::cout << "\tlin_x\tlin_y\tlin_z";
     std::cout << "\tang_x\tang_y\tang_z";
     std::cout << std::endl;
 
-    for (rosbag::MessageInstance const instance: view) {
-        const auto msg = instance.instantiate<geometry_msgs::TwistStamped>();
+    while (bag.has_next()) {
+        const auto instance = bag.read_next();
+        std::shared_ptr<geometry_msgs::msg::TwistStamped> msg;
+        if (topic_type == rosidl_generator_traits::name<geometry_msgs::msg::TwistStamped>()) {
+            msg = std::make_shared<geometry_msgs::msg::TwistStamped>();
+            rclcpp::SerializedMessage serialized(*instance->serialized_data);
+            rclcpp::Serialization<geometry_msgs::msg::TwistStamped> serialization;
+            serialization.deserialize_message(&serialized, msg.get());
+        }
         if (msg == NULL)
             continue;
         
         std::ostringstream ss_sec, ss_nsec;
         ss_sec << std::setw(9) << std::setfill('0') << msg->header.stamp.sec;
-        ss_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nsec;
+        ss_nsec << std::setw(9) << std::setfill('0') << msg->header.stamp.nanosec;
         std::cout << ss_sec.str() << ss_nsec.str();
         std::cout << '\t' << msg->twist.linear.x;
         std::cout << '\t' << msg->twist.linear.y;

@@ -1,23 +1,25 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.16)
 project(bag2image)
 
 ## Compile as C++11, supported in ROS Kinetic and newer
-# add_compile_options(-std=c++11)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS
-    cv_bridge
-    geographic_msgs
-    geometry_msgs
-    nav_msgs
-    rosbag
-    roscpp
-    sensor_msgs
-    std_msgs
-    tf2_msgs
-)
+find_package(ament_cmake REQUIRED)
+find_package(cv_bridge REQUIRED)
+find_package(geographic_msgs REQUIRED)
+find_package(geometry_msgs REQUIRED)
+find_package(nav_msgs REQUIRED)
+find_package(rosbag2_cpp REQUIRED)
+find_package(rosbag2_storage REQUIRED)
+find_package(rclcpp REQUIRED)
+find_package(rosidl_runtime_cpp REQUIRED)
+find_package(sensor_msgs REQUIRED)
+find_package(std_msgs REQUIRED)
+find_package(tf2_msgs REQUIRED)
 
 ## System dependencies are found with CMake's conventions
 # find_package(Boost REQUIRED COMPONENTS system)
@@ -112,12 +114,6 @@ find_package(Boost REQUIRED COMPONENTS
 ## LIBRARIES: libraries you create in this project that dependent projects also need
 ## CATKIN_DEPENDS: catkin_packages dependent projects also need
 ## DEPENDS: system dependencies of this project that dependent projects also need
-catkin_package(
-#  INCLUDE_DIRS include
-#  LIBRARIES bag2image
-#  CATKIN_DEPENDS other_catkin_pkg
-#  DEPENDS system_lib
-)
 
 ###########
 ## Build ##
@@ -128,7 +124,6 @@ catkin_package(
 include_directories(
 # include
   ${OpenCV_INCLUDE_DIRS}
-  ${catkin_INCLUDE_DIRS}
   ${Boost_INCLUDE_DIRS}
 )
 
@@ -163,55 +158,56 @@ include_directories(
 # )
 
 add_executable(extract_images src/extract_images.cpp)
-target_link_libraries(extract_images ${OpenCV_LIBRARIES} ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_images rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp cv_bridge sensor_msgs)
+target_link_libraries(extract_images ${OpenCV_LIBRARIES} ${Boost_LIBRARIES})
 
 add_executable(extract_imu src/extract_imu.cpp)
-add_dependencies(extract_imu ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_imu ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_imu rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp sensor_msgs)
+target_link_libraries(extract_imu ${Boost_LIBRARIES})
 
 add_executable(extract_gps src/extract_gps.cpp)
-add_dependencies(extract_gps ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_gps ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_gps rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp sensor_msgs)
+target_link_libraries(extract_gps ${Boost_LIBRARIES})
 
 add_executable(extract_compass src/extract_compass.cpp)
-add_dependencies(extract_compass ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_compass ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_compass rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp sensor_msgs)
+target_link_libraries(extract_compass ${Boost_LIBRARIES})
 
 add_executable(extract_float64 src/extract_float64.cpp)
-add_dependencies(extract_float64 ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_float64 ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_float64 rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp std_msgs)
+target_link_libraries(extract_float64 ${Boost_LIBRARIES})
 
 add_executable(extract_posestamped src/extract_posestamped.cpp)
-add_dependencies(extract_posestamped ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_posestamped ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_posestamped rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp geometry_msgs)
+target_link_libraries(extract_posestamped ${Boost_LIBRARIES})
 
 add_executable(extract_geopointstamped src/extract_geopointstamped.cpp)
-add_dependencies(extract_geopointstamped ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_geopointstamped ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_geopointstamped rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp geographic_msgs)
+target_link_libraries(extract_geopointstamped ${Boost_LIBRARIES})
 
 add_executable(extract_odometry src/extract_odometry.cpp)
-add_dependencies(extract_odometry ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_odometry ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_odometry rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp nav_msgs)
+target_link_libraries(extract_odometry ${Boost_LIBRARIES})
 
 add_executable(extract_twiststamped src/extract_twiststamped.cpp)
-add_dependencies(extract_twiststamped ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_twiststamped ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_twiststamped rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp geometry_msgs)
+target_link_libraries(extract_twiststamped ${Boost_LIBRARIES})
 
 add_executable(extract_uint32 src/extract_uint32.cpp)
-add_dependencies(extract_uint32 ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_uint32 ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_uint32 rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp std_msgs)
+target_link_libraries(extract_uint32 ${Boost_LIBRARIES})
 
 add_executable(extract_posewithcovariancestamped src/extract_posewithcovariancestamped.cpp)
-add_dependencies(extract_posewithcovariancestamped ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_posewithcovariancestamped ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_posewithcovariancestamped rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp geometry_msgs)
+target_link_libraries(extract_posewithcovariancestamped ${Boost_LIBRARIES})
 
 add_executable(extract_pc2 src/extract_pc2.cpp)
-add_dependencies(extract_pc2 ${catkin_EXPORTED_TARGETS})
-target_link_libraries(extract_pc2 ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(extract_pc2 rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp sensor_msgs)
+target_link_libraries(extract_pc2 ${Boost_LIBRARIES})
 
 add_executable(exclude_child_frame src/exclude_child_frame.cpp)
-add_dependencies(exclude_child_frame ${catkin_EXPORTED_TARGETS})
-target_link_libraries(exclude_child_frame ${catkin_LIBRARIES} ${Boost_LIBRARIES})
+ament_target_dependencies(exclude_child_frame rclcpp rosbag2_cpp rosbag2_storage rosidl_runtime_cpp tf2_msgs)
+target_link_libraries(exclude_child_frame ${Boost_LIBRARIES})
 
 #############
 ## Install ##
@@ -267,3 +263,28 @@ target_link_libraries(exclude_child_frame ${catkin_LIBRARIES} ${Boost_LIBRARIES}
 
 ## Add folders to be run by python nosetests
 # catkin_add_nosetests(test)
+
+install(TARGETS
+    extract_images
+    extract_imu
+    extract_gps
+    extract_compass
+    extract_float64
+    extract_posestamped
+    extract_geopointstamped
+    extract_odometry
+    extract_twiststamped
+    extract_uint32
+    extract_posewithcovariancestamped
+    extract_pc2
+    exclude_child_frame
+    RUNTIME DESTINATION lib/${PROJECT_NAME}
+)
+install(DIRECTORY launch DESTINATION share/${PROJECT_NAME})
+
+if(BUILD_TESTING)
+    find_package(ament_cmake_pytest REQUIRED)
+    ament_add_pytest_test(bag_tools test/test_tools.py TIMEOUT 180)
+endif()
+
+ament_package()
